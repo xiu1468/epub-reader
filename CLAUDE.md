@@ -13,6 +13,7 @@
 | `index.html` | 整個 App 就是這一個檔案（約 1.9 MB）。JSZip 3.10.1 和字形還原程式都直接內嵌在 `<script>` 裡，所以頁面不依賴任何 CDN。 |
 | `dict.tsv` | 離線辭典：`word \t phonetic \t translation`，解釋的每一行之間用 ` \| ` 隔開。內容是繁體中文。 |
 | `forms.tsv` | 變化形對照原形：`form \t lemma`（例如 `went \t go`）。 |
+| `examples.tsv` | 例句：`word \t english \t 繁中翻譯`，約 1.2 萬個常用字各一句，來源 Tatoeba（CC BY 2.0 FR），由 `tools/build_examples.py` 產生。卡片在解釋下方顯示例句（不顯示書中原句；原句仍存進生字本）。 |
 | `sw.js` | Service Worker：`index.html` 走 network-first（才會更新），其他檔案走 cache-first，所以可以離線使用。 |
 | `manifest.webmanifest`、`icon-*.png` | PWA 安裝用。 |
 | `tools/build_dict.py` | 用 ECDICT 重新產生 `dict.tsv` 和 `forms.tsv` 的腳本。 |
@@ -40,7 +41,9 @@ git clone --depth 1 https://github.com/skywind3000/ECDICT.git /tmp/ecdict/src
 pip install --break-system-packages opencc-python-reimplemented
 cd /tmp/ecdict && python3 /path/to/tools/build_dict.py 60000   # 會在目前資料夾寫出 dict.tsv 和 forms.tsv
 ```
-**`dict.tsv`、`forms.tsv` 或 sw.js 的快取檔案清單有任何變動時，都要把 `sw.js` 裡的 `CACHE` 版本號加一**（例如 `epub-reader-v2` → `v3`），不然已經安裝 App 的使用者會一直用到舊的快取。
+**`dict.tsv`、`forms.tsv`、`examples.tsv` 或 sw.js 的快取檔案清單有任何變動時，都要把 `sw.js` 裡的 `CACHE` 版本號加一**（例如 `epub-reader-v2` → `v3`），不然已經安裝 App 的使用者會一直用到舊的快取。
+
+例句的重新產生：`npm pack tatoeba-sentence-pairs-in-mandarin-chinese-english` 解開取得 `sentences.json`，再執行 `python3 tools/build_examples.py sentences.json dict.tsv forms.tsv > examples.tsv`。
 
 ## Cambridge
 

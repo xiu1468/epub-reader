@@ -101,7 +101,11 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   .defs .miss{color:var(--muted);font-size:14px}
   .lbl{font-size:12px;color:var(--muted);margin:8px 0 6px}
   #reader.sheetopen .chapnav{padding-bottom:65vh}
-  .sheet .ctx{margin:6px 0 4px;font-size:14px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .ex{margin:8px 2px 2px;line-height:1.5}
+  .ex .en{font-family:"Literata",serif;font-size:15px}
+  .ex .en b{color:var(--accent)}
+  .ex .zh{font-size:14px;color:var(--muted);margin-top:2px}
+  .ex .tag{font-size:11px;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:0 5px;margin-right:6px;vertical-align:2px}
   .actions{display:flex;gap:8px;margin-top:10px}
   .actions .btn{flex:1}
   .note{font-size:12px;color:var(--muted);margin-top:10px;line-height:1.5}
@@ -173,7 +177,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   <div class="ph" id="sPh"></div>
   <div class="forms" id="sForms"></div>
   <div class="defs" id="sDefs"></div>
-  <div class="ctx" id="sCtx"></div>
+  <div class="ex" id="sEx"></div>
   <div class="lbl">看完整解釋（Cambridge，需要網路）</div>
   <div class="links">
     <a class="main" id="lnkTC" target="_blank" rel="noopener">英漢（繁體）</a>
@@ -210,7 +214,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       <div class="seg"><button id="dTC">英漢繁</button><button id="dEN">英英</button></div>
     </div>
     <p class="note">生字本與閱讀進度只存在這個瀏覽器裡，換裝置不會同步。</p>
-    <p class="note">離線解釋來自 ECDICT 開源英漢辭典（MIT 授權）。點字時會自動還原成原形（running → run），猜錯時可點卡片上的其他字形。</p>
+    <p class="note">離線解釋來自 ECDICT 開源英漢辭典（MIT 授權），例句來自 Tatoeba（tatoeba.org，CC BY 2.0 FR）。點字時會自動還原成原形（running → run），猜錯時可點卡片上的其他字形。</p>
   </div>
 </div>
 
@@ -622,11 +626,12 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
   const camb = (ds, w) => 'https://dictionary.cambridge.org/search/direct/?datasetsearch=' + ds + '&q=' + encodeURIComponent(w.toLowerCase());
   // ---------- offline dictionary (ECDICT) ----------
-  let DICT = null, FORMS = null, dictP = null;
+  let DICT = null, FORMS = null, EX = new Map(), dictP = null;
   function loadDict(){
     if (!dictP) dictP = Promise.all([fetch('dict.tsv').then(r => { if (!r.ok) throw 0; return r.text(); }),
-                                     fetch('forms.tsv').then(r => r.ok ? r.text() : '')])
-      .then(([d, f]) => {
+                                     fetch('forms.tsv').then(r => r.ok ? r.text() : ''),
+                                     fetch('examples.tsv').then(r => r.ok ? r.text() : '').catch(() => '')])
+      .then(([d, f, x]) => {
         const D = new Map(), F = new Map();
         for (const line of d.split('\n')){
           const a = line.indexOf('\t'); if (a < 0) continue;
@@ -635,6 +640,9 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         }
         for (const line of f.split('\n')){
           const a = line.indexOf('\t'); if (a > 0) F.set(line.slice(0, a), line.slice(a + 1));
+        }
+        for (const line of x.split('\n')){
+          const p = line.split('\t'); if (p.length >= 3) EX.set(p[0], {en: p[1], zh: p[2]});
         }
         DICT = D; FORMS = F;
       }).catch(() => { dictP = null; });
@@ -681,6 +689,17 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     const re = rawL !== word.toLowerCase() && DICT.get(rawL);
     if (re) html += '<div class="alt"><b>' + escH(re.w) + '</b>　' + escH(re.tr.split(' | ').slice(0, 2).join('；')) + '</div>';
     box.innerHTML = html;
+    renderExample(word);
+  }
+  function renderExample(word){
+    const box = $('sEx'), w = word.toLowerCase();
+    const ex = EX.get(w) || (curWord.raw && EX.get(curWord.raw.toLowerCase()));
+    if (!ex){ box.innerHTML = ''; return; }
+    const en = escH(ex.en).replace(/[A-Za-z]+(?:[-'][A-Za-z]+)*/g, t => {
+      const l = t.toLowerCase();
+      return (l === w || (FORMS && FORMS.get(l) === w)) ? '<b>' + t + '</b>' : t;
+    });
+    box.innerHTML = '<div class="en"><span class="tag">例句</span>' + en + '</div><div class="zh">' + escH(ex.zh) + '</div>';
   }
   function refreshForms(){
     const forms = candidates(curWord.lookup);
@@ -707,9 +726,6 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   }
   function openSheet(word, raw, sentence){
     curWord = {word, lookup: word, raw, sentence};
-    const esc = s => s.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
-    const i = sentence.indexOf(raw);
-    $('sCtx').innerHTML = i >= 0 ? esc(sentence.slice(0,i)) + '<b>' + esc(raw) + '</b>' + esc(sentence.slice(i+raw.length)) : esc(sentence);
     refreshForms();
     $('sheet').classList.add('open');
     $('reader').classList.add('sheetopen');
