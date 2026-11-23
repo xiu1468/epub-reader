@@ -89,10 +89,19 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   .chip.on{background:var(--accent-soft);border-color:var(--accent);color:var(--accent);font-weight:600}
   .ctx{font-family:"Literata",serif;font-style:italic;color:var(--muted);line-height:1.55;margin:6px 0 14px;font-size:15px}
   .ctx b{color:var(--fg);font-style:normal}
-  .links{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-  .links a{display:block;text-align:center;text-decoration:none;padding:12px 8px;border-radius:12px;font-size:15px}
-  .links a.main{background:var(--accent);color:#fff;grid-column:1/-1;font-weight:600}
-  .links a.sub{border:1px solid var(--line);color:var(--fg)}
+  .links{display:grid;grid-template-columns:1.3fr 1fr 1fr;gap:8px}
+  .links a{display:block;text-align:center;text-decoration:none;padding:10px 6px;border-radius:12px;font-size:14px;border:1px solid var(--line);color:var(--fg)}
+  .links a.main{border-color:var(--accent);color:var(--accent);font-weight:600}
+  .ph{font-family:"Literata",serif;color:var(--muted);font-size:15px;margin-top:-2px}
+  .defs{margin:8px 0 4px;padding:10px 12px;border-radius:14px;background:var(--bg);line-height:1.55;font-size:16px;max-height:24vh;overflow-y:auto}
+  .defs .ln{margin:2px 0}
+  .defs .pos{color:var(--accent);font-weight:600;font-family:"Literata",serif;margin-right:4px}
+  .defs .alt{margin-top:8px;padding-top:8px;border-top:1px dashed var(--line);font-size:14px;color:var(--muted)}
+  .defs .alt b{color:var(--fg);font-family:"Literata",serif}
+  .defs .miss{color:var(--muted);font-size:14px}
+  .lbl{font-size:12px;color:var(--muted);margin:8px 0 6px}
+  #reader.sheetopen .chapnav{padding-bottom:65vh}
+  .sheet .ctx{margin:6px 0 4px;font-size:14px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
   .actions{display:flex;gap:8px;margin-top:10px}
   .actions .btn{flex:1}
   .note{font-size:12px;color:var(--muted);margin-top:10px;line-height:1.5}
@@ -161,18 +170,20 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     <button class="icon" id="sSpeak" title="朗讀">🔊</button>
     <button class="icon" id="sClose" title="關閉">✕</button>
   </div>
+  <div class="ph" id="sPh"></div>
   <div class="forms" id="sForms"></div>
+  <div class="defs" id="sDefs"></div>
   <div class="ctx" id="sCtx"></div>
+  <div class="lbl">看完整解釋（Cambridge，需要網路）</div>
   <div class="links">
-    <a class="main" id="lnkTC" target="_blank" rel="noopener">Cambridge 英漢（繁體）</a>
+    <a class="main" id="lnkTC" target="_blank" rel="noopener">英漢（繁體）</a>
     <a class="sub" id="lnkEN" target="_blank" rel="noopener">英英解釋</a>
     <a class="sub" id="lnkTH" target="_blank" rel="noopener">同義詞</a>
   </div>
   <div class="actions">
     <button class="btn" id="sSave">＋ 加入生字本</button>
   </div>
-  <div class="note">會自動還原成原形（running → run、children → child）。猜錯時可以點上方的其他字形。目前會在新分頁開啟 Cambridge 網站。拿到官方 API 金鑰後，可以改成直接在這張卡片裡顯示解釋。</div>
-</div>
+  </div>
 
 <div class="panel" id="vocabPanel">
   <header>
@@ -199,6 +210,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       <div class="seg"><button id="dTC">英漢繁</button><button id="dEN">英英</button></div>
     </div>
     <p class="note">生字本與閱讀進度只存在這個瀏覽器裡，換裝置不會同步。</p>
+    <p class="note">離線解釋來自 ECDICT 開源英漢辭典（MIT 授權）。點字時會自動還原成原形（running → run），猜錯時可點卡片上的其他字形。</p>
   </div>
 </div>
 
@@ -609,13 +621,78 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   });
 
   const camb = (ds, w) => 'https://dictionary.cambridge.org/search/direct/?datasetsearch=' + ds + '&q=' + encodeURIComponent(w.toLowerCase());
+  // ---------- offline dictionary (ECDICT) ----------
+  let DICT = null, FORMS = null, dictP = null;
+  function loadDict(){
+    if (!dictP) dictP = Promise.all([fetch('dict.tsv').then(r => { if (!r.ok) throw 0; return r.text(); }),
+                                     fetch('forms.tsv').then(r => r.ok ? r.text() : '')])
+      .then(([d, f]) => {
+        const D = new Map(), F = new Map();
+        for (const line of d.split('\n')){
+          const a = line.indexOf('\t'); if (a < 0) continue;
+          const b = line.indexOf('\t', a + 1);
+          D.set(line.slice(0, a).toLowerCase(), {w: line.slice(0, a), ph: line.slice(a + 1, b), tr: line.slice(b + 1)});
+        }
+        for (const line of f.split('\n')){
+          const a = line.indexOf('\t'); if (a > 0) F.set(line.slice(0, a), line.slice(a + 1));
+        }
+        DICT = D; FORMS = F;
+      }).catch(() => { dictP = null; });
+    return dictP;
+  }
+  setTimeout(loadDict, 500);
+
   function candidates(raw){
     const lower = raw.toLowerCase();
-    let base = [];
-    try{ if (window.Lem) base = Lem.lemmas(lower).base; }catch(e){}
-    const list = base.slice();
-    if (!list.includes(lower)) list.push(lower);
+    const list = [];
+    const add = x => { if (x && !list.includes(x)) list.push(x); };
+    if (FORMS && FORMS.get(lower)) add(FORMS.get(lower));
+    try{ if (window.Lem) Lem.lemmas(lower).base.forEach(add); }catch(e){}
+    add(lower);
+    // put the first form found in the dictionary first
+    if (DICT){
+      const hit = list.find(x => DICT.has(x));
+      if (hit && hit !== list[0]){ list.splice(list.indexOf(hit), 1); list.unshift(hit); }
+    }
     return list;
+  }
+  const escH = s => s.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+  function defHTML(tr){
+    return tr.split(' | ').map(line => {
+      const m = line.match(/^((?:[a-z]+\.\s*)+)\s*(.*)$/i);
+      return '<div class="ln">' + (m ? '<span class="pos">' + escH(m[1].trim()) + '</span>' + escH(m[2]) : escH(line)) + '</div>';
+    }).join('');
+  }
+  function shortDef(word){
+    const e = DICT && DICT.get(word.toLowerCase());
+    return e ? e.tr.split(' | ')[0] : '';
+  }
+  function renderDefs(word){
+    const box = $('sDefs'), ph = $('sPh');
+    if (!DICT){
+      box.innerHTML = '<div class="miss">離線辭典載入中…</div>'; ph.textContent = '';
+      loadDict().then(() => { if (curWord && curWord.word === word && $('sheet').classList.contains('open')) refreshForms(); });
+      return;
+    }
+    const e = DICT.get(word.toLowerCase());
+    ph.textContent = e && e.ph ? '/' + e.ph + '/' : '';
+    let html = e ? defHTML(e.tr) : '<div class="miss">離線辭典裡沒有「' + escH(word) + '」，可以點下方 Cambridge 查詢。</div>';
+    const rawL = curWord.raw.toLowerCase();
+    const re = rawL !== word.toLowerCase() && DICT.get(rawL);
+    if (re) html += '<div class="alt"><b>' + escH(re.w) + '</b>　' + escH(re.tr.split(' | ').slice(0, 2).join('；')) + '</div>';
+    box.innerHTML = html;
+  }
+  function refreshForms(){
+    const forms = candidates(curWord.lookup);
+    const box = $('sForms'); box.innerHTML = '';
+    if (forms.length > 1){
+      const lab = document.createElement('span'); lab.textContent = '字形：'; box.appendChild(lab);
+      forms.forEach(f => {
+        const c = document.createElement('button'); c.className = 'chip'; c.textContent = f;
+        c.onclick = () => setLookup(f); box.appendChild(c);
+      });
+    }
+    setLookup(forms[0]);
   }
   function setLookup(word){
     curWord.word = word;
@@ -626,25 +703,25 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     const saved = vocab().some(v => v.w.toLowerCase() === word.toLowerCase());
     $('sSave').textContent = saved ? '✓ 已在生字本' : '＋ 加入生字本';
     Array.from($('sForms').querySelectorAll('.chip')).forEach(c => c.classList.toggle('on', c.textContent === word));
+    renderDefs(word);
   }
   function openSheet(word, raw, sentence){
-    const forms = candidates(word);
-    curWord = {word: forms[0], raw, sentence};
-    const box = $('sForms'); box.innerHTML = '';
-    if (forms.length > 1){
-      const lab = document.createElement('span'); lab.textContent = '字形：'; box.appendChild(lab);
-      forms.forEach(f => {
-        const c = document.createElement('button'); c.className = 'chip'; c.textContent = f;
-        c.onclick = () => setLookup(f); box.appendChild(c);
-      });
-    }
+    curWord = {word, lookup: word, raw, sentence};
     const esc = s => s.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
     const i = sentence.indexOf(raw);
     $('sCtx').innerHTML = i >= 0 ? esc(sentence.slice(0,i)) + '<b>' + esc(raw) + '</b>' + esc(sentence.slice(i+raw.length)) : esc(sentence);
-    setLookup(forms[0]);
+    refreshForms();
     $('sheet').classList.add('open');
+    $('reader').classList.add('sheetopen');
+    requestAnimationFrame(() => setTimeout(() => {
+      if (!hlMark) return;
+      const r = hlMark.getBoundingClientRect();
+      const top = window.innerHeight - $('sheet').offsetHeight;
+      const header = $('reader').getBoundingClientRect().top;
+      if (r.bottom > top - 16) $('reader').scrollBy({top: r.bottom - top + 16 + (top - header) / 3, behavior: 'smooth'});
+    }, 230));
   }
-  function closeSheet(){ $('sheet').classList.remove('open'); clearHL(); }
+  function closeSheet(){ $('sheet').classList.remove('open'); $('reader').classList.remove('sheetopen'); clearHL(); }
   $('sClose').onclick = closeSheet;
   $('sSpeak').onclick = () => {
     try{
@@ -658,7 +735,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   $('sSave').onclick = () => {
     const list = vocab();
     if (list.some(v => v.w.toLowerCase() === curWord.word.toLowerCase())){ toast('已經在生字本裡了'); return; }
-    list.unshift({w: curWord.word, f: curWord.raw, s: curWord.sentence, b: book ? book.title : '', t: Date.now()});
+    list.unshift({w: curWord.word, f: curWord.raw, d: shortDef(curWord.word), s: curWord.sentence, b: book ? book.title : '', t: Date.now()});
     store.set('vocab', list);
     $('sSave').textContent = '✓ 已在生字本';
     toast('已加入生字本');
@@ -676,9 +753,11 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       a.target = '_blank'; a.rel = 'noopener'; a.textContent = v.w; w.appendChild(a);
       if (v.f && v.f.toLowerCase() !== v.w.toLowerCase()){ const f = document.createElement('span'); f.style.cssText = 'font-weight:400;font-size:14px;color:var(--muted);margin-left:8px'; f.textContent = '(' + v.f + ')'; w.appendChild(f); }
       const s = document.createElement('div'); s.className = 's'; s.textContent = v.s;
+      const dd = v.d || shortDef(v.w);
+      const de = document.createElement('div'); de.style.cssText = 'font-size:14px;margin-top:3px'; de.textContent = dd;
       const m = document.createElement('div'); m.className = 'meta';
       m.textContent = (v.b ? v.b + ' · ' : '') + new Date(v.t).toLocaleDateString('zh-TW');
-      main.append(w, s, m);
+      main.append(w); if (dd) main.append(de); main.append(s, m);
       const del = document.createElement('button'); del.className = 'icon'; del.textContent = '🗑'; del.title = '刪除';
       del.onclick = () => { const l = vocab(); l.splice(i, 1); store.set('vocab', l); renderVocab(); };
       d.append(main, del); box.appendChild(d);
@@ -687,7 +766,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   $('vCopy').onclick = async () => {
     const list = vocab();
     if (!list.length){ toast('生字本是空的'); return; }
-    const tsv = list.map(v => v.w + '\t' + v.s.replace(/\t/g,' ')).join('\n');
+    const tsv = list.map(v => v.w + '\t' + (v.d || shortDef(v.w)) + '\t' + v.s.replace(/\t/g,' ')).join('\n');
     try{ await navigator.clipboard.writeText(tsv); toast('已複製 ' + list.length + ' 個字，可貼到 Anki 匯入'); }
     catch(e){ toast('無法複製，請改用長按選取'); }
   };
