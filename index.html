@@ -193,7 +193,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   <header>
     <button class="icon" data-close="vocabPanel">‹</button>
     <div class="title">生字本 <span id="vCount" style="color:var(--muted);font-weight:400"></span></div>
-    <button class="btn" id="vCopy" style="padding:7px 12px;font-size:14px">複製（Anki）</button>
+    <button class="btn" id="vExport" style="padding:7px 12px;font-size:14px">匯出 .txt</button>
   </header>
   <div class="body" id="vList"></div>
 </div>
@@ -779,12 +779,22 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       d.append(main, del); box.appendChild(d);
     });
   }
-  $('vCopy').onclick = async () => {
+  $('vExport').onclick = () => {
     const list = vocab();
     if (!list.length){ toast('生字本是空的'); return; }
-    const tsv = list.map(v => v.w + '\t' + (v.d || shortDef(v.w)) + '\t' + v.s.replace(/\t/g,' ')).join('\n');
-    try{ await navigator.clipboard.writeText(tsv); toast('已複製 ' + list.length + ' 個字，可貼到 Anki 匯入'); }
-    catch(e){ toast('無法複製，請改用長按選取'); }
+    const clean = t => (t || '').replace(/\s+/g, ' ').trim();
+    const lines = list.map((v, i) => {
+      const form = v.f && v.f.toLowerCase() !== v.w.toLowerCase() ? '（書中字形：' + v.f + '）' : '';
+      return (i + 1) + '. ' + v.w + form + '\n原句：' + clean(v.s) + (v.b ? '\n出處：' + v.b : '');
+    });
+    const d = new Date(), pad = n => String(n).padStart(2, '0');
+    const date = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+    const text = '生字本（' + list.length + ' 個字，' + date + ' 匯出）\n\n' + lines.join('\n\n') + '\n';
+    const url = URL.createObjectURL(new Blob([text], {type: 'text/plain;charset=utf-8'}));
+    const a = document.createElement('a'); a.href = url; a.download = 'vocab-' + date + '.txt';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+    toast('已匯出 ' + list.length + ' 個字');
   };
 
   $('btnVocab').onclick = () => { renderVocab(); $('vocabPanel').classList.add('open'); };
