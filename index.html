@@ -729,13 +729,6 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     refreshForms();
     $('sheet').classList.add('open');
     $('reader').classList.add('sheetopen');
-    requestAnimationFrame(() => setTimeout(() => {
-      if (!hlMark) return;
-      const r = hlMark.getBoundingClientRect();
-      const top = window.innerHeight - $('sheet').offsetHeight;
-      const header = $('reader').getBoundingClientRect().top;
-      if (r.bottom > top - 16) $('reader').scrollBy({top: r.bottom - top + 16 + (top - header) / 3, behavior: 'smooth'});
-    }, 230));
   }
   function closeSheet(){ $('sheet').classList.remove('open'); $('reader').classList.remove('sheetopen'); clearHL(); }
   $('sClose').onclick = closeSheet;
