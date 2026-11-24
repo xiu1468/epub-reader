@@ -93,6 +93,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   .links a{display:block;text-align:center;text-decoration:none;padding:10px 6px;border-radius:12px;font-size:14px;border:1px solid var(--line);color:var(--fg)}
   .links a.main{border-color:var(--accent);color:var(--accent);font-weight:600}
   .ph{font-family:"Literata",serif;color:var(--muted);font-size:15px;margin-top:-2px}
+  .ph .lv{font-family:"Noto Sans TC",sans-serif;font-size:13px;margin-left:10px;white-space:nowrap}
+  .ph .lv .st{color:var(--accent);letter-spacing:1px}
   .defs{margin:8px 0 4px;padding:10px 12px;border-radius:14px;background:var(--bg);line-height:1.55;font-size:16px;max-height:24vh;overflow-y:auto}
   .defs .ln{margin:2px 0}
   .defs .pos{color:var(--accent);font-weight:600;font-family:"Literata",serif;margin-right:4px}
@@ -634,9 +636,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       .then(([d, f, x]) => {
         const D = new Map(), F = new Map();
         for (const line of d.split('\n')){
-          const a = line.indexOf('\t'); if (a < 0) continue;
-          const b = line.indexOf('\t', a + 1);
-          D.set(line.slice(0, a).toLowerCase(), {w: line.slice(0, a), ph: line.slice(a + 1, b), tr: line.slice(b + 1)});
+          const p = line.split('\t'); if (p.length < 3) continue;
+          D.set(p[0].toLowerCase(), {w: p[0], ph: p[1], tr: p[2], c: +p[3] || 0, r: +p[4] || 0});
         }
         for (const line of f.split('\n')){
           const a = line.indexOf('\t'); if (a > 0) F.set(line.slice(0, a), line.slice(a + 1));
@@ -671,6 +672,15 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       return '<div class="ln">' + (m ? '<span class="pos">' + escH(m[1].trim()) + '</span>' + escH(m[2]) : escH(line)) + '</div>';
     }).join('');
   }
+  function levelInfo(word){
+    const e = DICT && DICT.get(word.toLowerCase());
+    if (!e || (!e.c && !e.r)) return null;
+    return {stars: e.c ? '★'.repeat(e.c) + '☆'.repeat(5 - e.c) : '', rank: e.r ? '常用第 ' + e.r.toLocaleString('en-US') + ' 名' : ''};
+  }
+  function levelText(word){
+    const l = levelInfo(word);
+    return l ? [l.stars, l.rank].filter(Boolean).join(' · ') : '';
+  }
   function shortDef(word){
     const e = DICT && DICT.get(word.toLowerCase());
     return e ? e.tr.split(' | ')[0] : '';
@@ -683,7 +693,9 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       return;
     }
     const e = DICT.get(word.toLowerCase());
-    ph.textContent = e && e.ph ? '/' + e.ph + '/' : '';
+    const lv = levelInfo(word);
+    ph.innerHTML = (e && e.ph ? escH('/' + e.ph + '/') : '') +
+      (lv ? '<span class="lv">' + (lv.stars ? '<span class="st">' + lv.stars + '</span>' : '') + (lv.stars && lv.rank ? ' · ' : '') + lv.rank + '</span>' : '');
     let html = e ? defHTML(e.tr) : '<div class="miss">離線辭典裡沒有「' + escH(word) + '」，可以點下方 Cambridge 查詢。</div>';
     const rawL = curWord.raw.toLowerCase();
     const re = rawL !== word.toLowerCase() && DICT.get(rawL);
@@ -765,20 +777,23 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       const dd = v.d || shortDef(v.w);
       const de = document.createElement('div'); de.style.cssText = 'font-size:14px;margin-top:3px'; de.textContent = dd;
       const m = document.createElement('div'); m.className = 'meta';
-      m.textContent = (v.b ? v.b + ' · ' : '') + new Date(v.t).toLocaleDateString('zh-TW');
+      const lt = levelText(v.w);
+      m.textContent = (lt ? lt + ' · ' : '') + (v.b ? v.b + ' · ' : '') + new Date(v.t).toLocaleDateString('zh-TW');
       main.append(w); if (dd) main.append(de); main.append(s, m);
       const del = document.createElement('button'); del.className = 'icon'; del.textContent = '🗑'; del.title = '刪除';
       del.onclick = () => { const l = vocab(); l.splice(i, 1); store.set('vocab', l); renderVocab(); };
       d.append(main, del); box.appendChild(d);
     });
   }
-  $('vExport').onclick = () => {
+  $('vExport').onclick = async () => {
     const list = vocab();
+    await loadDict();
     if (!list.length){ toast('生字本是空的'); return; }
     const clean = t => (t || '').replace(/\s+/g, ' ').trim();
     const lines = list.map((v, i) => {
       const form = v.f && v.f.toLowerCase() !== v.w.toLowerCase() ? '（書中字形：' + v.f + '）' : '';
-      return (i + 1) + '. ' + v.w + form + '\n原句：' + clean(v.s) + (v.b ? '\n出處：' + v.b : '');
+      const lt = levelText(v.w);
+      return (i + 1) + '. ' + v.w + form + (lt ? '\n等級：' + lt : '') + '\n原句：' + clean(v.s) + (v.b ? '\n出處：' + v.b : '');
     });
     const d = new Date(), pad = n => String(n).padStart(2, '0');
     const date = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
@@ -790,7 +805,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     toast('已匯出 ' + list.length + ' 個字');
   };
 
-  $('btnVocab').onclick = () => { renderVocab(); $('vocabPanel').classList.add('open'); };
+  $('btnVocab').onclick = () => { renderVocab(); $('vocabPanel').classList.add('open'); if (!DICT) loadDict().then(renderVocab); };
   $('btnSettings').onclick = () => $('setPanel').classList.add('open');
   document.querySelectorAll('[data-close]').forEach(b => b.onclick = () => $(b.dataset.close).classList.remove('open'));
   (async () => {

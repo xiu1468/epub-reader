@@ -38,7 +38,8 @@ def clean(t):
     return out.replace('\t',' ')
 out=[]
 for w,r in sorted(keep.items()):
-    out.append(f"{r['word']}\t{r['phonetic'].replace(chr(9),' ')}\t{clean(r['translation'])}")
+    c=num(r['collins']); rank=num(r['frq']) or num(r['bnc'])  # COCA rank, fall back to BNC
+    out.append(f"{r['word']}\t{r['phonetic'].replace(chr(9),' ')}\t{clean(r['translation'])}\t{c or ''}\t{rank or ''}")
 open('dict.tsv','w').write('\n'.join(out)+'\n')
 open('forms.tsv','w').write('\n'.join(f"{a}\t{b}" for a,b in sorted(forms.items()))+'\n')
 print(len(keep), len(forms))

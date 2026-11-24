@@ -1,4 +1,4 @@
-const CACHE = 'epub-reader-v3';
+const CACHE = 'epub-reader-v4';
 const SHELL = ['./', 'index.html', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'dict.tsv', 'forms.tsv', 'examples.tsv'];
 
 self.addEventListener('install', e => {
