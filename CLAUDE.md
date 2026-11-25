@@ -58,3 +58,13 @@ Cambridge 只用一般連結，例如 `https://dictionary.cambridge.org/search/d
 - 推送前截圖檢查卡片的版面
 
 用 `git -c push.negotiate=true push origin HEAD:main` 推送。
+
+## vocab/ 語塊筆記
+
+使用者每讀一本書會開一個 Claude 對話，分段貼文章，Claude 挑出語塊、進階單字、句型。每次回覆後要把該段同步到這裡。網址：https://xiu1468.github.io/epub-reader/vocab/
+
+- `vocab/books/<YYYY-MM-DD>-<slug>.json`：一本書（＝一個對話）一個檔，`{id, title, created, segments:[{seg, top:[推薦編號], items:[...]}]}`。每個 item：`{n, cat, term, ipa, pos, meaning, usage, example, trans}`，`cat` 是 `chunk`（語塊與搭配詞）、`word`（進階單字）、`pattern`（句型）；語塊的 `ipa` 寫成 `swoop /swuːp/`，句型的 `ipa`、`pos` 留空字串。編號整本書連續，不重來。
+- 新增一段：在該書 JSON 的 `segments` 後面加一筆，然後執行 `python3 tools/vocab_index.py`（檢查編號連續並重建 `vocab/books.json`），commit 後推送。
+- 書名在網頁上可以改，但只存在該瀏覽器的 localStorage（`vocabTitle:<id>`）；使用者要求改書名時改 JSON 的 `title`。勾選存在 `vocabSel:<id>`。
+- `sw.js` 會略過 `/vocab/` 路徑，所以筆記不受 App 快取影響；網頁抓資料時也加了 `?t=` 避開快取。
+- 做 Anki 卡片時，可以直接從這個 JSON 取使用者給的編號。
