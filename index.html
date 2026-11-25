@@ -558,15 +558,18 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     }
     return null;
   }
-  let hlMark = null, curWord = null;
+  let hlMarks = [], curWord = null;
+  // invisible chars some EPUBs put inside words (soft hyphen, zero-width space/joiners, BOM)
+  const IGN = /[\u00AD\u200B-\u200D\u2060\uFEFF]/, IGN_G = /[\u00AD\u200B-\u200D\u2060\uFEFF]/g;
 
   function clearHL(){
-    if (hlMark && hlMark.parentNode){
-      const p = hlMark.parentNode;
-      p.replaceChild(document.createTextNode(hlMark.textContent), hlMark);
+    for (const m of hlMarks){
+      if (!m.parentNode) continue;
+      const p = m.parentNode;
+      p.replaceChild(document.createTextNode(m.textContent), m);
       p.normalize();
     }
-    hlMark = null;
+    hlMarks = [];
   }
 
   function sentenceAround(block, wordRange, word){
@@ -582,7 +585,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       if (end <= pos) s = end;
       else if (m.index >= pos + word.length - 1){ e = m.index + 1; break; }
     }
-    let sent = text.slice(s, e).replace(/\s+/g,' ').trim();
+    let sent = text.slice(s, e).replace(IGN_G, '').replace(/\s+/g,' ').trim();
     if (sent.length > 320) sent = sent.slice(0, 320) + '…';
     return sent;
   }
@@ -602,29 +605,58 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     const sel = window.getSelection();
     if (sel && !sel.isCollapsed) return;
 
+    clearHL();  // remove old marks first, so the nodes we measure below stay in the page
     const r = rangeAt(e.clientX, e.clientY);
     if (!r || r.startContainer.nodeType !== 3 || !$('content').contains(r.startContainer)){ closeSheet(); return; }
-    const node = r.startContainer, t = node.data;
-    let s = r.startOffset, en = r.startOffset;
-    while (s > 0 && isW(t[s-1])) s--;
-    while (en < t.length && isW(t[en])) en++;
-    while (s < en && /['’\-]/.test(t[s])) s++;
-    while (en > s && /['’\-]/.test(t[en-1])) en--;
-    let raw = t.slice(s, en);
+    const node = r.startContainer;
+    const BLK = 'p,li,h1,h2,h3,h4,h5,h6,blockquote,dd,dt,td,th,figcaption,div';
+    const block = node.parentElement.closest(BLK) || node.parentElement;
+    // Join the block's text nodes so a word split across inline tags (<span>ex</span><span>pected</span>)
+    // or by soft hyphens / zero-width chars is still read as one word. <br> and nested blocks break words.
+    const segs = []; let joined = '';
+    const tw = document.createTreeWalker(block, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT);
+    for (let n; (n = tw.nextNode()); ){
+      if (n.nodeType === 1){ if (n.localName === 'br') joined += '\n'; continue; }
+      const b = n.parentElement.closest(BLK);
+      if (segs.length && b !== segs[segs.length - 1].b) joined += '\n';
+      segs.push({n, a: joined.length, b}); joined += n.data;
+    }
+    const me = segs.find(x => x.n === node);
+    if (!me){ closeSheet(); return; }
+    const wc = ch => isW(ch) || (!!ch && IGN.test(ch));
+    const edge = ch => /['’\-]/.test(ch) || IGN.test(ch);
+    let s = me.a + r.startOffset, en = s;
+    while (s > 0 && wc(joined[s-1])) s--;
+    while (en < joined.length && wc(joined[en])) en++;
+    while (s < en && edge(joined[s])) s++;
+    while (en > s && edge(joined[en-1])) en--;
+    let raw = joined.slice(s, en).replace(IGN_G, '');
     if (!/[A-Za-z]/.test(raw)){ closeSheet(); return; }
 
-    const wr = document.createRange(); wr.setStart(node, s); wr.setEnd(node, en);
+    const len = x => x.n.data.length;
+    const i0 = segs.findIndex(x => x.a <= s && s < x.a + len(x));
+    const i1 = segs.findIndex(x => x.a < en && en <= x.a + len(x));
+    if (i0 < 0 || i1 < 0){ closeSheet(); return; }
+    const wr = document.createRange();
+    wr.setStart(segs[i0].n, s - segs[i0].a); wr.setEnd(segs[i1].n, en - segs[i1].a);
     const rect = wr.getBoundingClientRect(), pad = 6;
     if (e.clientX < rect.left - pad || e.clientX > rect.right + pad || e.clientY < rect.top - pad || e.clientY > rect.bottom + pad){
       closeSheet(); return;
     }
     let lookup = raw.replace(/['’]s$/i, '').replace(/’/g, "'");
-    const block = node.parentElement.closest('p,li,h1,h2,h3,h4,h5,h6,blockquote,dd,dt,td,th,figcaption,div') || node.parentElement;
     const sentence = sentenceAround(block, wr, raw);
 
-    clearHL();
-    const mark = document.createElement('mark'); mark.className = 'hl';
-    try{ wr.surroundContents(mark); hlMark = mark; }catch(err){}
+    // highlight: one <mark> per text node the word touches
+    const parts = [];
+    for (let i = i0; i <= i1; i++){
+      const x = segs[i], from = Math.max(s - x.a, 0), to = Math.min(en - x.a, len(x));
+      if (to > from) parts.push([x.n, from, to]);
+    }
+    for (const [n, from, to] of parts){
+      const pr = document.createRange(); pr.setStart(n, from); pr.setEnd(n, to);
+      const mark = document.createElement('mark'); mark.className = 'hl';
+      try{ pr.surroundContents(mark); hlMarks.push(mark); }catch(err){}
+    }
     openSheet(lookup, raw, sentence);
   });
 
@@ -732,7 +764,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
           if (BLOCKS.has((el.localName || '').toLowerCase())) el.appendChild(doc.createTextNode('\n'));
         });
         for (const para of body.textContent.split('\n')){
-          const t = para.replace(/\s+/g, ' ').trim();
+          const t = para.replace(IGN_G, '').replace(/\s+/g, ' ').trim();
           if (t.length < 20) continue;
           for (let x of t.split(/(?<=[.!?…]["'”’)\]]*)\s+(?=["'“‘(]?[A-Z])/)){
             x = x.trim();
