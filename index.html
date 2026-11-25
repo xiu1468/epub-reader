@@ -107,6 +107,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   .ex .en{font-family:"Literata",serif;font-size:15px}
   .ex .en b{color:var(--accent)}
   .ex .zh{font-size:14px;color:var(--muted);margin-top:2px}
+  .ex .it + .it{margin-top:9px}
   .ex .tag{font-size:11px;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:0 5px;margin-right:6px;vertical-align:2px}
   .actions{display:flex;gap:8px;margin-top:10px}
   .actions .btn{flex:1}
@@ -417,6 +418,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       }
       if (book) Object.values(book.blobs).forEach(u => URL.revokeObjectURL(u));
       book = {title, zip, read, spine, toc, manifest, blobs:{}};
+      bookSents = null; indexBook(book);
       buildToc();
       $('bookTitle').textContent = title;
       $('landing').classList.add('hidden');
@@ -643,7 +645,9 @@ https://github.com/nodeca/pako/blob/main/LICENSE
           const a = line.indexOf('\t'); if (a > 0) F.set(line.slice(0, a), line.slice(a + 1));
         }
         for (const line of x.split('\n')){
-          const p = line.split('\t'); if (p.length >= 3) EX.set(p[0], {en: p[1], zh: p[2]});
+          const p = line.split('\t'); if (p.length < 3) continue;
+          if (!EX.has(p[0])) EX.set(p[0], []);
+          EX.get(p[0]).push({en: p[1], zh: p[2]});
         }
         DICT = D; FORMS = F;
       }).catch(() => { dictP = null; });
@@ -703,15 +707,75 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     box.innerHTML = html;
     renderExample(word);
   }
+  // ---------- examples: Tatoeba first, then other sentences from this book ----------
+  let REV = null, bookSents = null;
+  const escRe = x => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  function formsOf(w){
+    if (!REV && FORMS){
+      REV = new Map();
+      for (const [f, l] of FORMS){ if (!REV.has(l)) REV.set(l, []); REV.get(l).push(f); }
+    }
+    return new Set([w, ...((REV && REV.get(w)) || [])]);
+  }
+  const BLOCKS = new Set(['p','li','h1','h2','h3','h4','h5','h6','blockquote','dd','dt','td','th','figcaption','div','br','section','tr']);
+  async function indexBook(b){
+    const sents = [], seen = new Set();
+    for (let i = 0; i < b.spine.length; i++){
+      if (book !== b) return;
+      try{
+        const item = b.spine[i];
+        const raw = await b.read(item.path) || '';
+        const doc = parseXML(raw, /html/i.test(item.mime) && !/xhtml/i.test(item.mime));
+        const body = doc.body || byLocal(doc, 'body')[0] || doc.documentElement;
+        byLocal(body, 'script').concat(byLocal(body, 'style')).forEach(n => n.remove());
+        Array.from(body.getElementsByTagName('*')).forEach(el => {
+          if (BLOCKS.has((el.localName || '').toLowerCase())) el.appendChild(doc.createTextNode('\n'));
+        });
+        for (const para of body.textContent.split('\n')){
+          const t = para.replace(/\s+/g, ' ').trim();
+          if (t.length < 20) continue;
+          for (let x of t.split(/(?<=[.!?…]["'”’)\]]*)\s+(?=["'“‘(]?[A-Z])/)){
+            x = x.trim();
+            if (x.length >= 25 && x.length <= 220 && /[a-z]/.test(x) && !seen.has(x)){ seen.add(x); sents.push(x); }
+          }
+        }
+      }catch(e){}
+      if (i % 4 === 3) await new Promise(r => setTimeout(r, 0));
+    }
+    if (book !== b) return;
+    bookSents = sents;
+    if (DICT && curWord && $('sheet').classList.contains('open')) renderExample(curWord.word);
+  }
+  function bookExamples(fs, n, skip){
+    if (!bookSents || n <= 0) return [];
+    const re = new RegExp('(?<![A-Za-z])(?:' + [...fs].map(escRe).join('|') + ')(?![A-Za-z])', 'gi');
+    const norm = x => (x || '').replace(/\s+/g, ' ').trim();
+    skip = norm(skip);
+    const hits = [];
+    for (const x of bookSents){
+      re.lastIndex = 0; let m, ok = false;
+      while ((m = re.exec(x))){
+        // skip capitalised mid-sentence matches (likely a name), e.g. "Hope" for hope
+        if (m.index > 0 && /[A-Z]/.test(m[0][0]) && !/[.!?"“‘(]\s*$/.test(x.slice(0, m.index))) continue;
+        ok = true; break;
+      }
+      if (!ok || (skip && (x === skip || skip.includes(x) || x.includes(skip)))) continue;
+      hits.push(x);
+      if (hits.length >= 300) break;
+    }
+    hits.sort((a, b) => Math.abs(a.length - 90) - Math.abs(b.length - 90));
+    return hits.slice(0, n);
+  }
   function renderExample(word){
     const box = $('sEx'), w = word.toLowerCase();
-    const ex = EX.get(w) || (curWord.raw && EX.get(curWord.raw.toLowerCase()));
-    if (!ex){ box.innerHTML = ''; return; }
-    const en = escH(ex.en).replace(/[A-Za-z]+(?:[-'][A-Za-z]+)*/g, t => {
-      const l = t.toLowerCase();
-      return (l === w || (FORMS && FORMS.get(l) === w)) ? '<b>' + t + '</b>' : t;
-    });
-    box.innerHTML = '<div class="en"><span class="tag">例句</span>' + en + '</div><div class="zh">' + escH(ex.zh) + '</div>';
+    const raw = curWord.raw ? curWord.raw.toLowerCase().replace(/’/g, "'") : '';
+    const exs = (EX.get(w) || (raw && EX.get(raw)) || []).slice(0, 3);
+    const fs = formsOf(w);
+    const fsB = new Set(fs); if (raw) fsB.add(raw);
+    const fromBook = bookExamples(fs, 3 - exs.length, curWord.sentence);
+    const bold = x => escH(x).replace(/[A-Za-z]+(?:[-'’][A-Za-z]+)*/g, t => fsB.has(t.toLowerCase().replace(/’/g, "'")) ? '<b>' + t + '</b>' : t);
+    box.innerHTML = exs.map(ex => '<div class="it"><div class="en"><span class="tag">例句</span>' + bold(ex.en) + '</div><div class="zh">' + escH(ex.zh) + '</div></div>').join('') +
+      fromBook.map(x => '<div class="it"><div class="en"><span class="tag">書中</span>' + bold(x) + '</div></div>').join('');
   }
   function refreshForms(){
     const forms = candidates(curWord.lookup);

@@ -13,7 +13,7 @@
 | `index.html` | 整個 App 就是這一個檔案（約 1.9 MB）。JSZip 3.10.1 和字形還原程式都直接內嵌在 `<script>` 裡，所以頁面不依賴任何 CDN。 |
 | `dict.tsv` | 離線辭典：`word \t phonetic \t translation \t collins \t rank`，解釋的每一行之間用 ` \| ` 隔開，內容是繁體中文。`collins` 是 Collins 星等（1～5，空白表示沒有），`rank` 是 COCA 字頻排名（沒有就用 BNC）。卡片、生字本和匯出的 .txt 會顯示成「★★★★☆ · 常用第 1,944 名」。 |
 | `forms.tsv` | 變化形對照原形：`form \t lemma`（例如 `went \t go`）。 |
-| `examples.tsv` | 例句：`word \t english \t 繁中翻譯`，約 1.2 萬個常用字各一句，來源 Tatoeba（CC BY 2.0 FR），由 `tools/build_examples.py` 產生。卡片在解釋下方顯示例句（不顯示書中原句；原句仍存進生字本）。 |
+| `examples.tsv` | 例句：`word \t english \t 繁中翻譯`，約 1.2 萬個字、每字最多 3 句（同一個字多行，好的排前面），來源 Tatoeba（CC BY 2.0 FR），由 `tools/build_examples.py` 產生。卡片在解釋下方最多顯示 3 句：先放 Tatoeba（標「例句」，有中文），不足時用這本書裡含同一字（或其變化形）的其他句子補上（標「書中」，沒有中文；排除點到的那一句）。書中句子在開書時由 `indexBook()` 在背景讀完所有章節建立索引，存在記憶體的 `bookSents`。 |
 | `sw.js` | Service Worker：`index.html` 走 network-first（才會更新），其他檔案走 cache-first，所以可以離線使用。 |
 | `manifest.webmanifest`、`icon-*.png` | PWA 安裝用。 |
 | `tools/build_dict.py` | 用 ECDICT 重新產生 `dict.tsv` 和 `forms.tsv` 的腳本。 |
