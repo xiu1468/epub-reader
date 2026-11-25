@@ -28,7 +28,7 @@
   - EPUB 解析：讀 container.xml → OPF → spine，目錄用 nav 或 NCX。每一章用 DOMParser 解析後放進 `#content`。不使用 iframe，所以點擊事件可以直接處理。
   - 點字查詢：用 `caretRangeFromPoint` 找出點到的位置，把所在段落的文字節點串起來再找單字邊界（`<br>` 和巢狀區塊會斷字），所以被 `<span>` 切開或夾著軟連字號／零寬字元（`IGN`）的字也能整個選到；再用 `<mark class="hl">` 標示（跨多個節點時每段各包一個，存在 `hlMarks`）。點擊時先 `clearHL()` 再量位置
   - 離線辭典：`loadDict()` 載入 `DICT` 和 `FORMS` 兩個 Map；`candidates()` 決定要用哪個字形查詢，優先順序是 forms 對照表 → `Lem` → 原字，最後把辭典裡查得到的字形排到最前面
-  - 查詢卡片（`#sheet`）、生字本
+  - 查詢卡片（`#sheet`）、生字本。卡片打開時 `history.pushState` 加一筆紀錄，所以手機的返回鍵會關閉卡片（`popstate` → `hideSheet()`）；用 ✕ 或其他方式關閉時 `closeSheet()` 會 `history.back()` 把那筆紀錄拿掉（`skipPop` 避免重複處理）
 - localStorage 的 key：`settings`、`vocab`（陣列，每筆是 `{w, f, d, s, b, t}`）、`pos:<書名>`（`{c: 章節索引, r: 捲動比例}`）、`lastBook`
 
 ## 離線辭典
