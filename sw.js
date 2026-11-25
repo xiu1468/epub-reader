@@ -12,8 +12,6 @@ self.addEventListener('fetch', e => {
   const req = e.request;
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
-  // vocab/ notes page: always from the network so new segments show up
-  if (url.pathname.includes('/vocab/')) return;
   // App page: network first (so updates show up), cache when offline
   if (req.mode === 'navigate' || url.pathname.endsWith('/index.html')) {
     e.respondWith(fetch(req).then(res => {
